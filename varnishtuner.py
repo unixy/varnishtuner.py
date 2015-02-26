@@ -6,35 +6,52 @@
 import os,optparse
 from subprocess import Popen,PIPE
 
+
 class ServerMemory():
 	def __init__(self):
 		self.free_raw = self.free_rawoutput()
 		self.free_memory = self.freeMemory()
 		self.total_memory = self.totalMemory()
 		self.used_memory = self.usedMemory())
+
 	def free_rawoutput(self):
 		freecmd = """/bin/free -m"""
 		free = Popen(freecmd, shell=True, stdout=PIPE)
 		freeout = free.wait().stdout.read()
 		return freeout
+
 	def freeMemory(self):
 		return int(self.free_raw[1].split()[3])
+
 	def totalMemory(self):
 		return int(self.free_raw[1].split()[1])
+
 	def usedMemory(self):
 		return int(self.free_raw[1].split()[2])
 
 class ServerCPUThreads():
+
 	def __init__(self):
 		self.cpuinfo_raw = self.cpuinfo_rawoutput()
 		self.nr_ht = self.numberHT()
 		self.nr_cores = self.numberCores()
 		self.nr_live_threads = self.numberLiveThreads()
+
 	def cpuinfo_rawoutput(self):
 		cpuinfocmd = """/bin/cat /proc/cpuinfo"""
 		cpuinfo = Popen(cpuinfocmd, shell=True, stdout=PIPE)
 		cpuinfoout = cpuinfo.wait.stdout.read()
 		return cpuinfooout
+
+	def numberCores(self):
+		pass
+
+	def numberHT():
+		nr_cores = numberCores()
+		pass
+
+	def numberLiveThreads():
+		pass
 		
 
 class VarnishStats(dict):
