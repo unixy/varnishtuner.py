@@ -6,6 +6,17 @@
 import os,optparse
 from subprocess import Popen,PIPE
 
+class CPUInfo(dict):
+    def __init__(self, *args):
+        dict.__init__(self, args)
+
+    def __getitem__(self, key):
+        val = dict.__getitem__(self, key)
+        return val
+
+    def __setitem__(self, key, val):
+        dict.__setitem__(self, key, val)
+
 
 class ServerMemory():
 	def __init__(self):
@@ -29,7 +40,7 @@ class ServerMemory():
 	def usedMemory(self):
 		return int(self.free_raw[1].split()[2])
 
-class ServerCPUThreads():
+class ServerCPUInfo():
 
 	def __init__(self):
 		self.cpuinfo_raw = self.cpuinfo_rawoutput()
@@ -40,17 +51,37 @@ class ServerCPUThreads():
 	def cpuinfo_rawoutput(self):
 		cpuinfocmd = """/bin/cat /proc/cpuinfo"""
 		cpuinfo = Popen(cpuinfocmd, shell=True, stdout=PIPE)
-		cpuinfoout = cpuinfo.wait.stdout.read()
+		cpuinfoout = cpuinfo.wait().stdout.read()
 		return cpuinfooout
 
+	def cpuinfo_dict(self):
+		cpuinfo = cpuinfo_rawoutput()
+		cpuinfo_d = CPUInfo()
+		for i in cpuinfo.split('\n'):
+			var,val = i.split(':')
+			cpuinfo_d[var]  = val
+		return cpuinfo_d
+
+	def numberCPUs(self):
+		cpu_d = cpuinfo_dict()
+		return int(cpu_d['physical id']) + 1
+
 	def numberCores(self):
-		pass
+		cpu_d = cpuinfo_dict()
+		nr_cpus = numberCPUs()
+		nr_cores_per_cpu = int(cpu_d['cpu cores'])
+		return nr_cores_per_cpu * nr_cpus
 
-	def numberHT():
-		nr_cores = numberCores()
-		pass
+	def numberHT(self):
+		cpu_d = cpuinfo_dict()
+		return int(cpu_d['processor']) + 1
 
-	def numberLiveThreads():
+	def haveHT(self):
+		if numberHT() == numberCores():
+			return False
+		return True
+
+	def numberLiveThreads(self):
 		pass
 		
 
