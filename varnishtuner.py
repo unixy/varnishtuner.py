@@ -23,7 +23,7 @@ class ServerMemory():
 		self.free_raw = self.free_rawoutput()
 		self.free_memory = self.freeMemory()
 		self.total_memory = self.totalMemory()
-		self.used_memory = self.usedMemory())
+		self.used_memory = self.usedMemory()
 
 	def free_rawoutput(self):
 		freecmd = """/bin/free -m"""
@@ -42,48 +42,60 @@ class ServerMemory():
 
 class ServerCPUInfo():
 
-	def __init__(self):
-		self.cpuinfo_raw = self.cpuinfo_rawoutput()
-		self.nr_ht = self.numberHT()
-		self.nr_cores = self.numberCores()
-		self.nr_live_threads = self.numberLiveThreads()
+        def __init__(self):
+                self.cpuinfo_raw = self.cpuinfo_rawoutput()
+                self.nr_ht = self.numberHT()
+                self.nr_cores = self.numberCores()
+                self.nr_live_threads = self.numberLiveThreads()
 
-	def cpuinfo_rawoutput(self):
-		cpuinfocmd = """/bin/cat /proc/cpuinfo"""
-		cpuinfo = Popen(cpuinfocmd, shell=True, stdout=PIPE)
-		cpuinfoout = cpuinfo.wait().stdout.read()
-		return cpuinfooout
+        def cpuinfo_rawoutput(self):
+                cpuinfocmd = """/bin/cat /proc/cpuinfo"""
+                cpuinfo = Popen(cpuinfocmd, shell=True, stdout=PIPE)
+		cpuinfo.wait()
+		cpuinfoout = cpuinfo.stdout.read()
+		return cpuinfoout
 
-	def cpuinfo_dict(self):
-		cpuinfo = cpuinfo_rawoutput()
-		cpuinfo_d = CPUInfo()
-		for i in cpuinfo.split('\n'):
+        def cpuinfo_dict(self):
+                cpuinfo = self.cpuinfo_rawoutput()
+                cpuinfo_d = CPUInfo()
+                for i in cpuinfo.split('\n'):
+			if len(i) <= 0:
+				continue
+			var,val = [],[]
 			var,val = i.split(':')
-			cpuinfo_d[var]  = val
-		return cpuinfo_d
+                        cpuinfo_d[var.strip()] = val.strip()
+                return cpuinfo_d
 
-	def numberCPUs(self):
-		cpu_d = cpuinfo_dict()
-		return int(cpu_d['physical id']) + 1
+	# This isn't reliable because a CPU assigned to a VM can show
+	# physical id: 6 when the node only has two cores available to it
+        def numberCPUs(self):
+                cpu_d = self.cpuinfo_dict()
+                return int(cpu_d['physical id']) + 1
+	# See numberCPUs
+        def numberCores(self):
+                cpu_d = self.cpuinfo_dict()
+                nr_cpus = self.numberCPUs()
+                nr_cores_per_cpu = int(cpu_d['cpu cores'])
+                return nr_cores_per_cpu * nr_cpus
+	# This is the most reliable attribute in a VM. The count
+	# gives you the number of HT/cores available to a VM
+        def numberHT(self):
+                cpu_d = self.cpuinfo_dict()
+                return int(cpu_d['processor']) + 1
 
-	def numberCores(self):
-		cpu_d = cpuinfo_dict()
-		nr_cpus = numberCPUs()
-		nr_cores_per_cpu = int(cpu_d['cpu cores'])
-		return nr_cores_per_cpu * nr_cpus
+        def haveHT(self):
+                if self.numberHT() == self.numberCores():
+                        return False
+                return True
+	# Some VMs have a subset of HT threads available. So even though
+	# CPUs * nr_cores > nr_ht, it doesn't mean vms have all those available
+	def maxAvailableThreads(self):
+		if self.numberHT() <= self.numberCores():
+			return self.numberHT()
 
-	def numberHT(self):
-		cpu_d = cpuinfo_dict()
-		return int(cpu_d['processor']) + 1
+        def numberLiveThreads(self):
+                pass
 
-	def haveHT(self):
-		if numberHT() == numberCores():
-			return False
-		return True
-
-	def numberLiveThreads(self):
-		pass
-		
 
 class VarnishStats(dict):
     def __init__(self, *args):
@@ -95,6 +107,40 @@ class VarnishStats(dict):
 
     def __setitem__(self, key, val):
         dict.__setitem__(self, key, val)
+
+def VarnishStats1():
+	stat1cmd = varnish_statpath + """ -1 -f uptime,client_drop,backend_unhealthy,backend_fail,fetch_failed,n_wrk_failed,n_wrk_lqueue,n_wrk_queued,n_wrk_drop,n_expied,n_lru_nuked,n_objoverflow"""
+	stat1 = Popen(stat1cmd, shell=True, stdout=PIPE)
+	stat1.wait()
+
+	vs = VarnishStats()
+	outstat = stat1.stdout.read()
+	i=0
+
+	for line in outstat.split('\n'):
+		if len(line) <= 0:
+			continue
+		var,val = [],[]
+		var, val, rest = line.split(None,2)
+		vs[var] = val
+		i = i+1
+	return vs
+
+def showHeader():
+	pass
+
+def showUptime(vs):
+	pass
+
+# Check n_lru_nuked
+def isObjectEvicted(vs):
+	pass
+
+# Check backend counters
+def isBackendFrail(vs):
+	pass
+
+# Check n_wrk_lqueue, n_wrk_queued, n_wrk_failed
 
 # Locate varnish's prefix path if possible and its binaries' location
 # Credit: http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
@@ -119,9 +165,19 @@ def which(program):
 __version__ = '0.1'
 usage = "Aha"
 
+# dmidecode doesn't do much in VZ envinronments
+def isVZ():
+	unamecmd = """/bin/uname -a"""
+	unamep = Popen(unamecmd, shell=True, stdout=PIPE)
+	unamep.wait()
+	uname = unamep.stdout.read()
+	if uname.find("stab") != -1:
+		return True
+	return False
+	
 # Are we running on hardware or software (vz,etc)
 def arch_type():
-	pass
+	if isVZ():
 
 parser = optparse.OptionParser(usage=usage, version=__version__)
 parser.add_option('-n', help='Varnish installation base directory')
@@ -136,24 +192,6 @@ else:
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
 
+VS = VarnishStats1()
 
-stat1cmd = varnish_statpath + """ -1 -f client_drop,backend_unhealthy,backend_fail,fetch_failed,n_wrk_failed,n_wrk_lqueue,n_work_queued,n_wrk_drop,n_expied,n_lru_nuked,n_objoverflow"""
-stat1 = Popen(stat1cmd, shell=True, stdout=PIPE)
-stat1.wait()
 
-vs = VarnishStats()
-outstat = stat1.stdout.read()
-i=0
-
-for line in outstat.split('\n'):
-	if len(line) <= 0:
-		continue
-	var,val = [],[]
-	var, val, rest = line.split(None,2)
-	vs[var] = val
-	i = i+1
-
-print vs
-
-#for n in range(i, 0, 0):
-#testsd:
