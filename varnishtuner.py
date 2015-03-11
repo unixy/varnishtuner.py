@@ -3,8 +3,9 @@
 
 # If os arch is 64-bit increase number of idle threads (threads are cheap at startup. Linux schedulers are smarter now)
 
-import os,optparse
+import os,sys,optparse
 from subprocess import Popen,PIPE
+from datetime import timedelta
 
 class CPUInfo(dict):
     def __init__(self, *args):
@@ -71,12 +72,14 @@ class ServerCPUInfo():
         def numberCPUs(self):
                 cpu_d = self.cpuinfo_dict()
                 return int(cpu_d['physical id']) + 1
+
 	# See numberCPUs
         def numberCores(self):
                 cpu_d = self.cpuinfo_dict()
                 nr_cpus = self.numberCPUs()
                 nr_cores_per_cpu = int(cpu_d['cpu cores'])
                 return nr_cores_per_cpu * nr_cpus
+
 	# This is the most reliable attribute in a VM. The count
 	# gives you the number of HT/cores available to a VM
         def numberHT(self):
@@ -87,6 +90,7 @@ class ServerCPUInfo():
                 if self.numberHT() == self.numberCores():
                         return False
                 return True
+
 	# Some VMs have a subset of HT threads available. So even though
 	# CPUs * nr_cores > nr_ht, it doesn't mean vms have all those available
 	def maxAvailableThreads(self):
@@ -126,11 +130,36 @@ def VarnishStats1():
 		i = i+1
 	return vs
 
-def showHeader():
-	pass
+def msg_out(msg):
+	sys.stdout.write(msg + "\n")
+	sys.stdout.flush()
+
+def showNewline():
+	msg_out('')
+
+def showAuthor():
+	msg_out("""\t|>\tVarnishtuner v""" + __version__ + """ Joe Hmamouche <joe@unixy.net>""")
+
+def showVarnishVersion(vs):
+	versioncmd = varnish_statpath + """ -V"""
+	version = Popen(versioncmd, shell=True, stdout=PIPE, stderr=PIPE)
+	version.wait()
+	out = version.stderr.read()
+	if out.find("revision") != -1:
+		msg = out.split("(")[1].split(")")[0]
+		msg_out("""\t|>\tRunning """ + msg)
 
 def showUptime(vs):
-	pass
+	uptime = str(timedelta(seconds = float(vs['uptime'])))
+	msg_out("""\t|>\tVarnish uptime: """ + uptime)
+
+def showBanner(vs):
+	showNewline()
+	showAuthor()
+	showVarnishVersion(vs)
+	showUptime(vs)
+	showNewline()
+
 
 # Check n_lru_nuked
 def isObjectEvicted(vs):
@@ -177,7 +206,8 @@ def isVZ():
 	
 # Are we running on hardware or software (vz,etc)
 def arch_type():
-	if isVZ():
+#	if isVZ():
+	pass
 
 parser = optparse.OptionParser(usage=usage, version=__version__)
 parser.add_option('-n', help='Varnish installation base directory')
@@ -194,4 +224,4 @@ else:
 
 VS = VarnishStats1()
 
-
+showBanner(VS)
