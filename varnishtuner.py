@@ -13,7 +13,10 @@ class SystemInfo():
 		self.uptime = self.getSystemUptimeShow(self.uptimeSeconds)
 
 	def getUptimeRawContent(self):
-		f = open("/proc/uptime", "r")
+		try:
+			f = open("/proc/uptime", "r")
+		except:
+			return float(0)
 		uptime = f.read()
 		return uptime
 
@@ -301,7 +304,7 @@ def isObjectEvicted(vs):
 
 # Check backend fail counters
 def isBackendFrail(vs):
-	return (int(vs['backend_drop']) > 0)
+	return (int(vs['backend_fail']) > 0)
 
 # Check n_wrk_lqueue, n_wrk_queued, n_wrk_failed
 
@@ -364,8 +367,19 @@ def showVarnishSettings(vc):
 	showMemoryAllocation(vc)
 	showThreadSettings(vc)
 
-def showRecommendations():
+def checkVitals(vs, vc):
+	
+	if isObjectEvicted(vs) and isClientDropped(vs):
+		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
+	elif isObjectEvicted(vs) or isClientDropped(vs):
+		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
 
+	if isWrkQueueGrowing(vs):
+		msg_out("Increase thread_pool_min ( > " + str(vc.startupThreadCount) + " but < 400)")
+
+	if isBackendFrail(vs):
+		msg_out("Backend's showing weakness. Ensure it's running optimally")
+		
 __version__ = '0.1.0'
 usage = 'usage'
 
@@ -408,5 +422,5 @@ VC = VarnishConfig("/etc/sysconfig/varnish")
 showBanner(VS, SI)
 showServerSettings(SM, SCI)
 showVarnishSettings(VC)
-showRecommendations(VC)
+checkVitals(VS, VC)
 showNewline()
