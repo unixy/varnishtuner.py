@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# varnishtuner.py v0.1.0 - Varnish Cache tuner script
+# varnishtuner.py v0.1.0a - Varnish Cache tuner script
 # Copyright (C) 2015 Joe Hmamouche <joe@unixy.net>
 
 import os,sys,optparse,re
@@ -28,15 +28,15 @@ class SystemInfo():
 		
 
 class CPUInfo(dict):
-    def __init__(self, *args):
-        dict.__init__(self, args)
+	def __init__(self, *args):
+		dict.__init__(self, args)
 
-    def __getitem__(self, key):
-        val = dict.__getitem__(self, key)
-        return val
+	def __getitem__(self, key):
+		val = dict.__getitem__(self, key)
+		return val
 
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
+	def __setitem__(self, key, val):
+		dict.__setitem__(self, key, val)
 
 
 class ServerMemory():
@@ -123,26 +123,26 @@ class ServerCPUInfo():
                 pass
 
 class VarnishOptions(dict):
-    def __init__(self, *args):
-        dict.__init__(self, args)
+	def __init__(self, *args):
+		dict.__init__(self, args)
 
-    def __getitem__(self, key):
-        val = dict.__getitem__(self, key)
-        return val
+	def __getitem__(self, key):
+		val = dict.__getitem__(self, key)
+		return val
 
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
+	def __setitem__(self, key, val):
+		dict.__setitem__(self, key, val)
 
 class VarnishStats(dict):
-    def __init__(self, *args):
-        dict.__init__(self, args)
+	def __init__(self, *args):
+		dict.__init__(self, args)
 
-    def __getitem__(self, key):
-        val = dict.__getitem__(self, key)
-        return val
+	def __getitem__(self, key):
+		val = dict.__getitem__(self, key)
+		return val
 
-    def __setitem__(self, key, val):
-        dict.__setitem__(self, key, val)
+	def __setitem__(self, key, val):
+		dict.__setitem__(self, key, val)
 
 class VarnishConfig():
 
@@ -156,6 +156,15 @@ class VarnishConfig():
 		self.storageType = self.getVarnishStorageType(self.all_options_text)
 		self.memorySetting = self.getMemorySetting(self.all_options_text)
 		self.possibleMemUsage = self.getPossibleMemoryUsage()
+		self.sess_workspace = self.getSessionWorkspace(self.all_options_text)
+
+	def getSessionWorkspace(self, options):
+		for i in options:
+			if i.find("DAEMON_OPTS=") != -1:
+				val = re.match(".*sess_workspace=(\d+).*", i)
+		if val:
+			return int(val.group(1))
+		return 0
 
 	def getVarnishConfigText(self,options_file):
 		try:
@@ -297,6 +306,23 @@ def showBanner(vs, si):
 	showUptime(vs, si)
 	showNewline('----------------------')
 
+def SessionWorkspaceSize(vs, vc):
+	if vc.sess_workspace <= 0:
+		return 0
+	if vc.sess_workspace > 0 and vc.sess_workspace < 100000:
+		return 1
+	elif vc.sess_workspace > 100000 and vc.sess_workspace > 200000:
+		return 2
+
+def isSessionWorkspaceOK(vs, vc):
+	ret = SessionWorkspaceSize(vs, vc)
+	if ret < 1:
+		return 1
+	elif ret >= 1 and ret < 2:
+		return -1
+	elif ret >=2:
+		return -2
+
 # Forceful eviction of objects from cache to make room
 # for others.
 def isObjectEvicted(vs):
@@ -321,6 +347,13 @@ def isRequestDrop(vs):
 # shortage
 def isClientDropped(vs):
 	return (int(vs['client_drop']) > 0)
+
+def isUptimeShort(si):
+	if si.uptimeSeconds < (24 * 60 * 60):
+		msg_out("Varnish started recently (< 24HRs). It needs to run for a bit longer.")
+
+def isAvailableMemoryOverrun():
+	pass
 
 # Locate varnish's prefix path if possible and its binaries' location
 # Credit: http://stackoverflow.com/questions/377017/test-if-executable-exists-in-python
@@ -367,8 +400,10 @@ def showVarnishSettings(vc):
 	showMemoryAllocation(vc)
 	showThreadSettings(vc)
 
-def checkVitals(vs, vc):
-	
+def checkVitals(vs, vc, si):
+
+	if isSessionWorkspaceOK(vs, vc) < 1:
+		msg_out("Increase sess_workspace ( > " + str(vc.sess_workspace) + " )")
 	if isObjectEvicted(vs) and isClientDropped(vs):
 		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
 	elif isObjectEvicted(vs) or isClientDropped(vs):
@@ -378,9 +413,9 @@ def checkVitals(vs, vc):
 		msg_out("Increase thread_pool_min ( > " + str(vc.startupThreadCount) + " but < 400)")
 
 	if isBackendFrail(vs):
-		msg_out("Backend's showing weakness. Ensure it's running optimally")
+		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(vs['backend_fail']) + ")")
 		
-__version__ = '0.1.0'
+__version__ = '0.1.0a'
 usage = 'usage'
 
 # dmidecode doesn't do much in VZ envinronments
@@ -422,5 +457,8 @@ VC = VarnishConfig("/etc/sysconfig/varnish")
 showBanner(VS, SI)
 showServerSettings(SM, SCI)
 showVarnishSettings(VC)
-checkVitals(VS, VC)
+showNewline()
+showNewline("---- Recommendations -----")
+showNewline()
+checkVitals(VS, VC, SI)
 showNewline()
