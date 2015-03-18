@@ -6,6 +6,24 @@ import os,sys,optparse,re
 from subprocess import Popen,PIPE
 from datetime import timedelta
 
+class SystemInfo():
+	def __init__(self):
+		self.rawUptime = self.getUptimeRawContent()
+		self.uptimeSeconds = self.getSystemUptimeSeconds(self.rawUptime)
+		self.uptime = self.getSystemUptimeShow(self.uptimeSeconds)
+
+	def getUptimeRawContent(self):
+		f = open("/proc/uptime", "r")
+		uptime = f.read()
+		return uptime
+
+	def getSystemUptimeSeconds(self,rawuptime):
+		return self.rawUptime.split()[0]
+
+	def getSystemUptimeShow(self,uptimeseconds):
+		return str(timedelta(seconds=float(uptimeseconds)))
+		
+
 class CPUInfo(dict):
     def __init__(self, *args):
         dict.__init__(self, args)
@@ -128,7 +146,10 @@ class VarnishConfig():
 	def __init__(self, file):
 		self.all_options_text = self.getVarnishConfigText(file)
 		self.startupThreadCount = self.getStartupThreadCount(self.all_options_text)
-		self.maxThreadcount = self.getMaxThreadCount(self.all_options_text)
+		self.numberThreadPoolMin = self.getNumberThreadPoolMin(self.all_options_text)
+		self.numberThreadPoolMax = self.getNumberThreadPoolMax(self.all_options_text)
+		self.numberThreadPools = self.getNumberThreadPools(self.all_options_text)
+		self.maxThreadCount = self.getMaxThreadCount(self.all_options_text)
 		self.storageType = self.getVarnishStorageType(self.all_options_text)
 		self.memorySetting = self.getMemorySetting(self.all_options_text)
 		self.possibleMemUsage = self.getPossibleMemoryUsage()
@@ -144,17 +165,27 @@ class VarnishConfig():
 
 
 	def getNumberThreadPools(self, options):
+		for i in options:
+			if i.find("DAEMON_OPTS=") != -1:
+				val = re.match(".*thread_pools=(\d+).*", i)
+		if val:
+			return int(val.group(1))
 		return 0
 
 	def getNumberThreadPoolMin(self, options):
 		for i in options:
 			if i.find("DAEMON_OPTS=") != -1:
-				val = re.match("thread_pool_min[^=]*=\D*(\d+)", i)
+				val = re.match(".*thread_pool_min=(\d+).*", i)
 		if val:
-			return val.group(1)
+			return int(val.group(1))
 		return 0
 
 	def getNumberThreadPoolMax(self, options):
+		for i in options:
+			if i.find("DAEMON_OPTS=") != -1:
+				val = re.match(".*thread_pool_max=(\d+).*", i)
+		if val:
+			return int(val.group(1))
 		return 0
 
 	def getStartupThreadCount(self, options):
@@ -224,14 +255,17 @@ def VarnishStats1():
 	return vs
 
 def msg_out(msg):
-	sys.stdout.write(msg + "\n")
+	sys.stdout.write("\t|>>\t" + msg + "\n")
 	sys.stdout.flush()
 
-def showNewline():
-	msg_out('')
+def showNewline(with_str = None):
+	if with_str and len(with_str) > 0:
+		msg_out(with_str)
+	else:
+		msg_out('')
 
 def showAuthor():
-	msg_out("""\t|>\tVarnishtuner v""" + __version__ + """ Joe Hmamouche <joe@unixy.net>""")
+	msg_out("""Varnishtuner v""" + __version__ + """ Joe Hmamouche <joe@unixy.net>""")
 
 def showVarnishVersion(vs):
 	versioncmd = varnish_statpath + """ -V"""
@@ -240,18 +274,25 @@ def showVarnishVersion(vs):
 	out = version.stderr.read()
 	if out.find("revision") != -1:
 		msg = out.split("(")[1].split(")")[0]
-		msg_out("""\t|>\tRunning """ + msg)
+		msg_out("""Running """ + msg)
 
-def showUptime(vs):
+def showUptime(vs, si):
 	uptime = str(timedelta(seconds = float(vs['uptime'])))
-	msg_out("""\t|>\tVarnish uptime: """ + uptime)
+	msg_out("""Server uptime: """ + si.uptime)
+	msg_out("""Varnish uptime: """ + uptime)
 
-def showBanner(vs):
+def showLoadAverage():
+	pass
+
+def showSystemUptime():
+	pass
+
+def showBanner(vs, si):
 	showNewline()
 	showAuthor()
 	showVarnishVersion(vs)
-	showUptime(vs)
-	showNewline()
+	showUptime(vs, si)
+	showNewline('----------------------')
 
 # Forceful eviction of objects from cache to make room
 # for others.
@@ -298,6 +339,33 @@ def which(program):
 
     return None
 
+def showNumberHTThreads(sci):
+	msg_out("Available CPU Threads: " + str(sci.nr_ht))
+
+def showMemoryInfo(sm):
+	msg_out("Total/Free/Used: " + str(sm.total_memory) + "MB / " + str(sm.free_memory) + "MB / " + str(sm.used_memory) + "MB")
+
+def showServerSettings(sm, sci):
+	showNumberHTThreads(sci)
+	showMemoryInfo(sm)
+
+def showStorageType(vc):
+	msg_out("Varnish cache storage type: \"" + vc.storageType + "\"")
+
+def showMemoryAllocation(vc):
+	msg_out("Memory Allocate to Varnish: " + str(vc.memorySetting) + "MB")
+
+def showThreadSettings(vc):
+	msg_out("Varnish Startup Threads: " + str(vc.startupThreadCount))
+	msg_out("Varnish Max Threads: " + str(vc.maxThreadCount))
+
+def showVarnishSettings(vc):
+	showStorageType(vc)
+	showMemoryAllocation(vc)
+	showThreadSettings(vc)
+
+def showRecommendations():
+
 __version__ = '0.1.0'
 usage = 'usage'
 
@@ -317,8 +385,8 @@ def arch_type():
 	pass
 
 parser = optparse.OptionParser(usage=usage, version=__version__)
-parser.add_option('-n', help='Varnish installation base directory')
-parser.add_option('-o', help='Varnish options file (ex: -s /etc/sysconfig/varnish)')
+parser.add_option('-b', '--base', help='Varnish installation base directory (Default: /usr/local/varnish)')
+parser.add_option('-o', '--options-file', help='Varnish options file (Default: /etc/sysconfig/varnish)')
 # parser.print_help()
 
 if os.path.isdir("/usr/local/varnish/bin"):
@@ -330,10 +398,15 @@ else:
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
 
+
+SI = SystemInfo()
 VS = VarnishStats1()
 SCI = ServerCPUInfo()
 SM = ServerMemory()
 VC = VarnishConfig("/etc/sysconfig/varnish")
 
-showBanner(VS)
-# showVarnishSettings(VS)
+showBanner(VS, SI)
+showServerSettings(SM, SCI)
+showVarnishSettings(VC)
+showRecommendations(VC)
+showNewline()
