@@ -389,7 +389,10 @@ def showStorageType(vc):
 	msg_out("Varnish cache storage type: \"" + vc.storageType + "\"")
 
 def showMemoryAllocation(vc):
-	msg_out("Memory Allocate to Varnish: " + str(vc.memorySetting) + "MB")
+	msg_out("Memory Allocated to Varnish: " + str(vc.memorySetting) + "MB")
+
+def showMaxMemoryUsage(vc):
+	return vc.possibleMemoryUsage
 
 def showThreadSettings(vc):
 	msg_out("Varnish Startup Threads: " + str(vc.startupThreadCount))
