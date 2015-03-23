@@ -9,4 +9,4 @@ First, there's the need to remove the complexity from correctly adjusting Varnis
 
 Why is the script reinventing the wheel instead of leveraging Python external modules?
 
-We're aiming to support 2.4,2.6,and 3.x Python installations. The goal is to have code that semi-works with all of these defragmented releases. So the script does not rely on installing modules. It's one file that runs on as many environments as possible.
+We're aiming to support 2.4,2.6,and 3.x Python installations. The goal is to have code that semi-works with all of these fragmented releases. So the script does not rely on installing modules. It's one file that runs on as many environments as possible.
