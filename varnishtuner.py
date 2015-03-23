@@ -2,6 +2,19 @@
 # varnishtuner.py v0.1.0a - Varnish Cache tuner script
 # Copyright (C) 2015 Joe Hmamouche <joe@unixy.net>
 
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
 import os,sys,optparse,re
 from subprocess import Popen,PIPE
 from datetime import timedelta
@@ -9,23 +22,36 @@ from datetime import timedelta
 class SystemInfo():
 	def __init__(self):
 		self.rawUptime = self.getUptimeRawContent()
+		self.rawLoadAvg = self.getLoadAverageRawContent()
 		self.uptimeSeconds = self.getSystemUptimeSeconds(self.rawUptime)
 		self.uptime = self.getSystemUptimeShow(self.uptimeSeconds)
+		self.loadAverage = self.getSystemLoadAverage(self.rawLoadAvg)
 
 	def getUptimeRawContent(self):
 		try:
 			f = open("/proc/uptime", "r")
 		except:
-			return float(0)
+			return str('')
 		uptime = f.read()
 		return uptime
+
+	def getLoadAverageRawContent(self):
+		try:
+			f = open("/proc/loadavg", "r")
+		except:
+			return str('')
+		loadavg = f.read()
+		return loadavg
 
 	def getSystemUptimeSeconds(self,rawuptime):
 		return self.rawUptime.split()[0]
 
 	def getSystemUptimeShow(self,uptimeseconds):
 		return str(timedelta(seconds=float(uptimeseconds)))
-		
+
+	def getSystemLoadAverage(self, rawLoadAvg):
+		a1, a2, a3, an = self.rawLoadAvg.split(None, 3)
+		return a1 + ', ' + a2 + ', ' + a3
 
 class CPUInfo(dict):
 	def __init__(self, *args):
@@ -246,6 +272,15 @@ class VarnishConfig():
 	def getPossibleMemoryUsage(self):
 		return float(self.getMemorySetting(self.all_options_text)) * 1.10
 
+def isVarnishOnline():
+	grepcmd = """/usr/bin/pgrep -f varnishd|grep -v $$|/usr/bin/wc -l"""
+	grep = Popen(grepcmd, shell=True, stdout=PIPE)
+	grep.wait()
+	out = grep.stdout.read().strip()
+	if out == '2':
+		return 1
+	return 0
+
 def VarnishStats1():
 	stat1cmd = varnish_statpath + """ -1 -f uptime,client_drop,backend_unhealthy,""" + \
 			"""backend_fail,fetch_failed,n_wrk_failed,n_wrk_lqueue,""" + \
@@ -293,8 +328,9 @@ def showUptime(vs, si):
 	msg_out("""Server uptime: """ + si.uptime)
 	msg_out("""Varnish uptime: """ + uptime)
 
-def showLoadAverage():
-	pass
+def showLoadAverage(si):
+	msg_out("Server Load: """  + str(si.loadAverage))
+	
 
 def showSystemUptime():
 	pass
@@ -304,6 +340,7 @@ def showBanner(vs, si):
 	showAuthor()
 	showVarnishVersion(vs)
 	showUptime(vs, si)
+	showLoadAverage(si)
 	showNewline('----------------------')
 
 def SessionWorkspaceSize(vs, vc):
@@ -376,7 +413,7 @@ def which(program):
     return None
 
 def showNumberHTThreads(sci):
-	msg_out("Available CPU Threads: " + str(sci.nr_ht))
+	msg_out("Available CPU/HW Threads: " + str(sci.nr_ht))
 
 def showMemoryInfo(sm):
 	msg_out("Total/Free/Used: " + str(sm.total_memory) + "MB / " + str(sm.free_memory) + "MB / " + str(sm.used_memory) + "MB")
@@ -418,9 +455,6 @@ def checkVitals(vs, vc, si):
 	if isBackendFrail(vs):
 		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(vs['backend_fail']) + ")")
 		
-__version__ = '0.1.0a'
-usage = 'usage'
-
 # dmidecode doesn't do much in VZ envinronments
 def isVZ():
 	unamecmd = """/bin/uname -a"""
@@ -433,15 +467,39 @@ def isVZ():
 	
 # Are we running on hardware or software (vz,etc)
 def arch_type():
-#	if isVZ():
-	pass
+	if isVZ():
+		pass
+
+def is_optsfile_sane(file):
+	f = open(file, "r")
+	out = f.read().split('\n')
+	for line in out:
+		if line.find("DAEMON_OPTS=") != -1:
+			return 1	
+		else:
+			continue
+	return 0
+
+__version__ = '0.1.0a'
+usage = 'usage'
+
+if not isVarnishOnline():
+	msg_out("Varnish is offline! I'm beta crazy today so I'll continue...")
 
 parser = optparse.OptionParser(usage=usage, version=__version__)
-parser.add_option('-b', '--base', help='Varnish installation base directory (Default: /usr/local/varnish)')
-parser.add_option('-o', '--options-file', help='Varnish options file (Default: /etc/sysconfig/varnish)')
-# parser.print_help()
+parser.add_option('-b', '--bin', help='Varnish installation bin directory (Default: /usr/local/varnish/bin)', dest='bin')
+parser.add_option('-o', '--options-file', help='Varnish options file (Default: /etc/sysconfig/varnish)', dest='options')
+(opts, args) = parser.parse_args()
 
-if os.path.isdir("/usr/local/varnish/bin"):
+if opts.bin:
+	if not os.path.isdir(opts.bin):
+		msg_out("Base directory provided does not exist (" + opts.bin + ")")
+		sys.exit(1)
+	else:	
+		varnish_binpath_default	= opts.bin + '/'
+		varnish_statpath 	= varnish_binpath_default + "varnishstat"
+		varnish_admpath		= varnish_binpath_default + "varnishadm"
+elif os.path.isdir("/usr/local/varnish/bin"):
 	varnish_binpath_default	= "/usr/local/varnish/bin/"
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
@@ -450,12 +508,29 @@ else:
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
 
+if not os.path.isfile(varnish_statpath):
+	msg_out("varnishstat util not found in " + varnish_statpath )
+	msg_out("Perhaps it hasn't been compiled?")
+	sys.exit(1)
+
+if opts.options:
+	if not os.path.isfile(opts.options):
+		msg_out("Options file does not exist at " + opts.options)
+		sys.exit(1)
+	options_file = opts.options
+else:
+	options_file = "/etc/sysconfig/varnish"
+
+if not is_optsfile_sane(options_file):
+	msg_out("Options file " + options_file + " is not sane!")
+	sys.exit(1)
+	
 
 SI = SystemInfo()
 VS = VarnishStats1()
 SCI = ServerCPUInfo()
 SM = ServerMemory()
-VC = VarnishConfig("/etc/sysconfig/varnish")
+VC = VarnishConfig(options_file)
 
 showBanner(VS, SI)
 showServerSettings(SM, SCI)
