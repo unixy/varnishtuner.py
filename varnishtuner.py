@@ -450,7 +450,7 @@ def checkVitals(vs, vc, si):
 		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
 
 	if isWrkQueueGrowing(vs):
-		msg_out("Increase thread_pool_min ( > " + str(vc.startupThreadCount) + " but < 400)")
+		msg_out("Increase thread_pool_min ( > " + str(vc.numberThreadPoolMin) + " but < 400)")
 
 	if isBackendFrail(vs):
 		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(vs['backend_fail']) + ")")
