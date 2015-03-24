@@ -451,7 +451,7 @@ def checkVitals(vs, vc, si):
 
 	if isWrkQueueGrowing(vs):
 		if vc.numberThreadPoolMin >= 400:
-			msg_out("Increase thread_pools ( > " + str(vc.numberThreadPools + " )")	
+			msg_out("Increase thread_pools ( > " + str(vc.numberThreadPools) + " )")	
 		else:
 			msg_out("Increase thread_pool_min ( > " + str(vc.numberThreadPoolMin) + " but < 400)")
 
