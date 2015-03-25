@@ -440,6 +440,11 @@ def showVarnishSettings(vc):
 	showMemoryAllocation(vc)
 	showThreadSettings(vc)
 
+def showUptimeImpact(si, vs):
+	varnish_uptime = int(vs['uptime'])
+	if varnish_uptime < (24 * 60 * 60) or si.uptimeSeconds < (24 * 60 * 60):
+		msg_out("Varnish has only been up " + str(timedelta(seconds=float(varnish_uptime))) + "!")
+
 def checkVitals(vs, vc, si):
 
 	if isSessionWorkspaceOK(vs, vc) < 1:
@@ -541,5 +546,6 @@ showVarnishSettings(VC)
 showNewline()
 showNewline("---- Recommendations -----")
 showNewline()
+showUptimeImpact(SI, VS)
 checkVitals(VS, VC, SI)
 showNewline()
