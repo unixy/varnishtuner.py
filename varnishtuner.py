@@ -512,7 +512,7 @@ elif os.path.isdir("/usr/local/varnish/bin"):
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
 else:
-	varnish_binpath_default	= os.path.dirname(which("varnishstat"))
+	varnish_binpath_default	= os.path.dirname(which("varnishstat")) + "/"
 	varnish_statpath 	= varnish_binpath_default + "varnishstat"
 	varnish_admpath		= varnish_binpath_default + "varnishadm"
 
