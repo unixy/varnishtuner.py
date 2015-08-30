@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os,sys,optparse,re,time
+import os,sys,optparse,re,time,getopt
 from subprocess import Popen,PIPE
 from datetime import timedelta
 
@@ -357,8 +357,10 @@ def SessionWorkspaceSize(vs, vc):
 		return 0
 	if vc.sess_workspace > 0 and vc.sess_workspace < 100000:
 		return 1
-	elif vc.sess_workspace > 100000 and vc.sess_workspace < 200000:
+	elif vc.sess_workspace > 100000 and vc.sess_workspace < 260000:
 		return 2
+	else:
+		return 3
 
 def isSessionWorkspaceOK(vs, vc):
 	ret = SessionWorkspaceSize(vs, vc)
@@ -462,23 +464,33 @@ def showUptimeImpact(si, vs):
 def checkVitals(xvs, vc, si):
 
 	(vs, asvs) = xvs
+	recommend = False
 	if isSessionWorkspaceOK(vs, vc) < 1:
+		recommend = True
 		msg_out("Increase sess_workspace ( > " + str(vc.sess_workspace) + " )")
 	elif isSessionWorkspaceOK(vs, vc) > 0 and isSessionWorkspaceOK(vs, vc) < 2:
+		recommend = True
 		msg_out("Recommended sess_workspace value ~ 260000. ( Currently: " + str(vc.sess_workspace) + " )")
 
 	if isObjectEvicted(xvs) and isClientDropped(xvs):
+		recommend = True
 		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
 
 	if isWrkQueueGrowing(xvs):
 		if vc.numberThreadPoolMin >= 400:
+			recommend = True
 			msg_out("Increase thread_pools ( > " + str(vc.numberThreadPools) + " )")	
 		else:
+			recommend = True
 			msg_out("Increase thread_pool_min ( > " + str(vc.numberThreadPoolMin) + " but < 400)")
 
 	if isBackendFrail(xvs):
 		(bsvs, asvs) = vs
+		recommend = True
 		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(asvs['backend_fail']) + ")")
+
+	if not recommend:
+		msg_out("Nothing to report so far. Carry on!")
 		
 # dmidecode doesn't do much in VZ envinronments
 def isVZ():
@@ -514,6 +526,7 @@ if not isVarnishOnline():
 parser = optparse.OptionParser(usage=usage, version=__version__)
 parser.add_option('-b', '--bin', help='Varnish installation bin directory (Default: /usr/local/varnish/bin)', dest='bin')
 parser.add_option('-o', '--options-file', help='Varnish options file (Default: /etc/sysconfig/varnish)', dest='options')
+parser.add_option('-s', '--sleep', help='Sleep time (sec) in between the first run and the second (Default: 60)', dest='sleep')
 (opts, args) = parser.parse_args()
 
 if opts.bin:
@@ -549,7 +562,12 @@ else:
 if not is_optsfile_sane(options_file):
 	msg_out("Options file " + options_file + " is not sane!")
 	sys.exit(1)
-	
+
+sleep_time = None
+if opts.sleep:
+	sleep_time = int(opts.sleep)
+else:
+	sleep_time = 60
 
 SI = SystemInfo()
 # before sleep
@@ -567,7 +585,8 @@ showNewline()
 showUptimeImpact(SI, bsVS)
 # Varnish can report failed counters while starting up.
 # 60s is enough to catch (un)changed counters like session_workspace
-time.sleep(60)
+showNewline("Sleeping for " + str(sleep_time) + " seconds")
+time.sleep(sleep_time)
 # after sleep
 asVS = VarnishStats1()
 checkVitals((bsVS,asVS), VC, SI)
