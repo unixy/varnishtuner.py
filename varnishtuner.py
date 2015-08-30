@@ -517,7 +517,7 @@ def is_optsfile_sane(file):
 			continue
 	return 0
 
-__version__ = '0.1.0a'
+__version__ = '0.1.2a'
 usage = 'usage'
 
 if not isVarnishOnline():
