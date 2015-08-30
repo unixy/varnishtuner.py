@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os,sys,optparse,re
+import os,sys,optparse,re,time
 from subprocess import Popen,PIPE
 from datetime import timedelta
 
@@ -120,20 +120,29 @@ class ServerCPUInfo():
 	# physical id: 6 when the node only has two cores available to it
         def numberCPUs(self):
                 cpu_d = self.cpuinfo_dict()
-                return int(cpu_d['physical id']) + 1
+		try:
+			return int(cpu_d['physical id']) + 1
+		except:
+			return 1
 
 	# See numberCPUs
         def numberCores(self):
                 cpu_d = self.cpuinfo_dict()
                 nr_cpus = self.numberCPUs()
-                nr_cores_per_cpu = int(cpu_d['cpu cores'])
+		try:
+			nr_cores_per_cpu = int(cpu_d['cpu cores'])
+		except:
+			nr_cores_per_cpu = 1
                 return nr_cores_per_cpu * nr_cpus
 
 	# This is the most reliable attribute in a VM. The count
 	# gives you the number of HT/cores available to a VM
         def numberHT(self):
                 cpu_d = self.cpuinfo_dict()
-                return int(cpu_d['processor']) + 1
+		try:
+			return int(cpu_d['processor']) + 1
+		except:
+			return 1
 
         def haveHT(self):
                 if self.numberHT() == self.numberCores():
@@ -348,42 +357,47 @@ def SessionWorkspaceSize(vs, vc):
 		return 0
 	if vc.sess_workspace > 0 and vc.sess_workspace < 100000:
 		return 1
-	elif vc.sess_workspace > 100000 and vc.sess_workspace > 200000:
+	elif vc.sess_workspace > 100000 and vc.sess_workspace < 200000:
 		return 2
 
 def isSessionWorkspaceOK(vs, vc):
 	ret = SessionWorkspaceSize(vs, vc)
 	if ret < 1:
-		return 1
-	elif ret >= 1 and ret < 2:
 		return -1
+	elif ret >= 1 and ret < 2:
+		return 1
 	elif ret >=2:
-		return -2
+		return 2
 
 # Forceful eviction of objects from cache to make room
 # for others.
 def isObjectEvicted(vs):
-	return (int(vs['n_lru_nuked']) > 0)
+	(bsvs, asvs) = vs
+	return ( (int(asvs['n_lru_nuked']) - int(bsvs['n_lru_nuked']) ) > 0)
 
 # Check backend fail counters
 def isBackendFrail(vs):
-	return (int(vs['backend_fail']) > 0)
+	(bsvs, asvs) = vs
+	return ( (int(asvs['backend_fail']) - int(bsvs['backend_fail']) ) > 0)
 
 # Check n_wrk_lqueue, n_wrk_queued, n_wrk_failed
 
 # Need to warn about queued work
 def isWrkQueueGrowing(vs):
-	return (int(vs['n_wrk_queued']) > 0)
+	(bsvs, asvs) = vs
+	return ( (int(asvs['n_wrk_queued']) - int(bsvs['n_wrk_queued']) ) > 0)
 
 # Things aren't going well with caching
 # if this is true
 def isRequestDrop(vs):
-	return (int(vs['n_wrk_drop']) > 0)
+	(bsvs, asvs) = vs
+	return ( (int(asvs['n_wrk_drop']) - int(bsvs['n_wrk_drop']) ) > 0)
 
 # Varnish had to drop client request due to resource
 # shortage
 def isClientDropped(vs):
-	return (int(vs['client_drop']) > 0)
+	(bsvs, asvs) = vs
+	return ( (int(asvs['client_drop']) - int(bsvs['clien_drop']) ) > 0)
 
 def isUptimeShort(si):
 	if si.uptimeSeconds < (24 * 60 * 60):
@@ -445,23 +459,26 @@ def showUptimeImpact(si, vs):
 	if varnish_uptime < (24 * 60 * 60) or si.uptimeSeconds < (24 * 60 * 60):
 		msg_out("Varnish has only been up " + str(timedelta(seconds=float(varnish_uptime))) + "!")
 
-def checkVitals(vs, vc, si):
+def checkVitals(xvs, vc, si):
 
+	(vs, asvs) = xvs
 	if isSessionWorkspaceOK(vs, vc) < 1:
 		msg_out("Increase sess_workspace ( > " + str(vc.sess_workspace) + " )")
-	if isObjectEvicted(vs) and isClientDropped(vs):
-		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
-	elif isObjectEvicted(vs) or isClientDropped(vs):
+	elif isSessionWorkspaceOK(vs, vc) > 0 and isSessionWorkspaceOK(vs, vc) < 2:
+		msg_out("Recommended sess_workspace value ~ 260000. ( Currently: " + str(vc.sess_workspace) + " )")
+
+	if isObjectEvicted(xvs) and isClientDropped(xvs):
 		msg_out("Increase Varnish memory allocation ( > " + str(vc.memorySetting) + "MB )")
 
-	if isWrkQueueGrowing(vs):
+	if isWrkQueueGrowing(xvs):
 		if vc.numberThreadPoolMin >= 400:
 			msg_out("Increase thread_pools ( > " + str(vc.numberThreadPools) + " )")	
 		else:
 			msg_out("Increase thread_pool_min ( > " + str(vc.numberThreadPoolMin) + " but < 400)")
 
-	if isBackendFrail(vs):
-		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(vs['backend_fail']) + ")")
+	if isBackendFrail(xvs):
+		(bsvs, asvs) = vs
+		msg_out("Backend's weak. Ensure it's optimal (backend_fail: " + str(asvs['backend_fail']) + ")")
 		
 # dmidecode doesn't do much in VZ envinronments
 def isVZ():
@@ -535,17 +552,23 @@ if not is_optsfile_sane(options_file):
 	
 
 SI = SystemInfo()
-VS = VarnishStats1()
+# before sleep
+bsVS = VarnishStats1()
 SCI = ServerCPUInfo()
 SM = ServerMemory()
 VC = VarnishConfig(options_file)
 
-showBanner(VS, SI)
+showBanner(bsVS, SI)
 showServerSettings(SM, SCI)
 showVarnishSettings(VC)
 showNewline()
 showNewline("---- Recommendations -----")
 showNewline()
-showUptimeImpact(SI, VS)
-checkVitals(VS, VC, SI)
+showUptimeImpact(SI, bsVS)
+# Varnish can report failed counters while starting up.
+# 60s is enough to catch (un)changed counters like session_workspace
+time.sleep(60)
+# after sleep
+asVS = VarnishStats1()
+checkVitals((bsVS,asVS), VC, SI)
 showNewline()
