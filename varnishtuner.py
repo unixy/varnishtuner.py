@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# varnishtuner.py v0.1.0a - Varnish Cache tuner script
+# varnishtuner.py v0.1.2a - Varnish Cache tuner script
 # Copyright (C) 2015 Joe Hmamouche <joe@unixy.net>
 
 # This program is free software: you can redistribute it and/or modify
