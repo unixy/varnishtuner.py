@@ -15,4 +15,7 @@ How do I run it?
 
 1. wget https://raw.githubusercontent.com/unixy/varnishtuner.py/master/varnishtuner.py
 
-2. python varnishtuner.py
+2.
+   a. python varnishtuner.py
+   OR
+   b. python varnishtuner.py --help # for all available options
