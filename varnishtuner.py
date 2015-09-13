@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import os,sys,optparse,re,time,getopt
+import os,sys,optparse,re,time
 from subprocess import Popen,PIPE
 from datetime import timedelta
 
