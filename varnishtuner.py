@@ -492,7 +492,7 @@ def checkVitals(xvs, vc, si):
 	if not recommend:
 		msg_out("Nothing to report so far. Carry on!")
 		
-# dmidecode doesn't do much in VZ envinronments
+# dmidecode doesn't do much in VZ environments
 def isVZ():
 	unamecmd = """/bin/uname -a"""
 	unamep = Popen(unamecmd, shell=True, stdout=PIPE)
